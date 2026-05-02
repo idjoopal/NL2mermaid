@@ -1,0 +1,24 @@
+from __future__ import annotations
+
+DIAGRAM_TYPE_AUTO = "auto"
+DIAGRAM_TYPE_FLOWCHART = "flowchart"
+DIAGRAM_TYPE_SEQUENCE = "sequence"
+DIAGRAM_TYPE_GANTT = "gantt"
+DIAGRAM_TYPE_TIMELINE = "timeline"
+DIAGRAM_TYPE_MINDMAP = "mindmap"
+
+SUPPORTED_DIAGRAM_TYPES = (
+    DIAGRAM_TYPE_AUTO,
+    DIAGRAM_TYPE_FLOWCHART,
+    DIAGRAM_TYPE_SEQUENCE,
+    DIAGRAM_TYPE_GANTT,
+    DIAGRAM_TYPE_TIMELINE,
+    DIAGRAM_TYPE_MINDMAP,
+)
+
+DEFAULT_DIAGRAM_TYPE = DIAGRAM_TYPE_AUTO
+DEFAULT_MODEL = "openai:gpt-4o-mini"
+
+ERROR_EMPTY_QUERY = "질의가 비어 있습니다."
+ERROR_GENERATION_FAILED = "Mermaid 코드 생성에 실패했습니다: {error}"
+ERROR_INVALID_DIAGRAM_TYPE = "지원하지 않는 다이어그램 타입입니다: {dtype}"
