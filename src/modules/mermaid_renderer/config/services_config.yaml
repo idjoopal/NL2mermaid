@@ -1,0 +1,16 @@
+default_provider: mermaid_ink   # mermaid_ink | kroki
+default_theme: default          # default | neutral | dark | forest
+default_bg_color: white
+output_dir: ./output
+
+providers:
+
+  mermaid_ink:
+    enabled: true
+    api_base_url: "https://mermaid.ink"
+    timeout: 30
+
+  kroki:
+    enabled: true
+    api_base_url: "https://kroki.io"   # 자체 호스팅 시 변경 (예: http://localhost:8000)
+    timeout: 30
