@@ -37,3 +37,7 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Generated output
+poc/*.png
+output/
+
