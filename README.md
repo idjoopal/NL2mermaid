@@ -1,22 +1,308 @@
 # NL2Mermaid MCP Server
 
-자연어 설명을 Mermaid 다이어그램 이미지(PNG)로 변환하는 MCP 서버입니다.  
-`NL2Mermaid` Tool 하나로 자연어 → LLM → Mermaid 코드 → PNG 이미지 파이프라인을 제공합니다.
+자연어를 **Mermaid 다이어그램(PNG)** 또는 **PPTX 프레젠테이션**으로 변환하는 MCP 서버입니다.  
+두 가지 Tool을 제공하며, LLM이 내용을 구조화한 뒤 각 포맷으로 출력합니다.
+
+---
+
+## 제공 Tool
+
+| Tool | 입력 | 출력 | 설명 |
+|------|------|------|------|
+| `NL2Mermaid` | 자연어 | PNG 이미지 | 자연어 → Mermaid 코드 → PNG |
+| `NL2PPT` | 자연어 | PPTX 파일 | 자연어 → 슬라이드 구조화 → PPTX |
 
 ---
 
 ## 목차
 
-1. [아키텍처 개요](#1-아키텍처-개요)
-2. [레이어별 역할과 규칙](#2-레이어별-역할과-규칙)
-3. [환경변수 설정 구조](#3-환경변수-설정-구조)
-4. [공통 유틸리티](#4-공통-유틸리티)
-5. [새 Agent / Module 추가하기](#5-새-agent--module-추가하기)
-6. [서버 실행](#6-서버-실행)
+1. [NL2Mermaid — 사용 예시](#1-nl2mermaid--사용-예시)
+2. [NL2PPT — 사용 예시](#2-nl2ppt--사용-예시)
+3. [아키텍처 개요](#3-아키텍처-개요)
+4. [환경변수 설정](#4-환경변수-설정)
+5. [NL2PPT 템플릿](#5-nl2ppt-템플릿)
+6. [공통 유틸리티](#6-공통-유틸리티)
+7. [새 Agent / Module 추가하기](#7-새-agent--module-추가하기)
+8. [서버 실행](#8-서버-실행)
 
 ---
 
-## 1. 아키텍처 개요
+## 1. NL2Mermaid — 사용 예시
+
+### 기본 사용법
+
+```
+Tool: NL2Mermaid
+query: "사용자가 로그인하면 JWT를 발급하고, 만료 시 리프레시 토큰으로 재발급하는 흐름"
+diagram_type: "sequence"
+theme: "default"
+```
+
+**LLM이 생성한 Mermaid 코드:**
+```
+sequenceDiagram
+    participant U as User
+    participant A as AuthServer
+    participant R as ResourceServer
+    U->>A: POST /login (id, pw)
+    A-->>U: 200 OK (JWT + RefreshToken)
+    U->>R: GET /api/data (Bearer JWT)
+    R-->>U: 200 OK (data)
+    Note over U,R: JWT 만료 후
+    U->>A: POST /refresh (RefreshToken)
+    A-->>U: 200 OK (new JWT)
+```
+
+**출력:** PNG 이미지 (MCP Image 타입으로 반환)
+
+---
+
+### 예시 2 — 플로우차트
+
+```
+Tool: NL2Mermaid
+query: "주문이 들어오면 재고 확인 후 있으면 결제 처리, 없으면 입고 대기 알림을 보낸다"
+diagram_type: "flowchart"
+theme: "neutral"
+```
+
+**생성된 Mermaid 코드:**
+```
+flowchart TD
+    A([주문 접수]) --> B{재고 확인}
+    B -->|재고 있음| C[결제 처리]
+    B -->|재고 없음| D[입고 대기 알림]
+    C --> E[배송 준비]
+    D --> F([대기 상태 저장])
+    E --> G([완료])
+```
+
+**출력:** PNG 이미지
+
+---
+
+### 예시 3 — 간트 차트
+
+```
+Tool: NL2Mermaid
+query: "앱 개발 프로젝트. 요구사항 분석 2주, 설계 2주, 개발 6주, QA 2주, 배포 1주"
+diagram_type: "gantt"
+```
+
+**생성된 Mermaid 코드:**
+```
+gantt
+    title 앱 개발 프로젝트
+    dateFormat YYYY-MM-DD
+    section 분석·설계
+        요구사항 분석 : 2026-05-01, 2w
+        시스템 설계   : 2026-05-15, 2w
+    section 개발
+        기능 개발     : 2026-05-29, 6w
+    section 검증·배포
+        QA 테스트     : 2026-07-10, 2w
+        배포          : 2026-07-24, 1w
+```
+
+**출력:** PNG 이미지
+
+### 지원 다이어그램 타입
+
+| diagram_type | Mermaid 문법 | 용도 |
+|---|---|---|
+| `auto` | LLM 자동 결정 | 기본값 |
+| `flowchart` | `flowchart TD/LR` | 프로세스 흐름도 |
+| `sequence` | `sequenceDiagram` | 시스템·팀 간 상호작용 |
+| `gantt` | `gantt` | 프로젝트 일정 |
+| `timeline` | `timeline` | 시계열 이벤트 |
+| `mindmap` | `mindmap` | 개념 구조도 |
+
+### 지원 테마
+
+| theme | 특징 |
+|-------|------|
+| `default` | 파란색 계열 기본 테마 |
+| `neutral` | 회색 계열 문서 친화적 |
+| `dark` | 어두운 배경 |
+| `forest` | 초록 계열 |
+
+---
+
+## 2. NL2PPT — 사용 예시
+
+### 예시 1 — 비즈니스 보고서 (`business` 템플릿)
+
+**입력:**
+```
+Tool: NL2PPT
+query: "2026년 상반기 마케팅 성과 보고서.
+        SNS 광고비 5천만원, 전환율 3.2%, 매출 기여 2억원.
+        채널별로는 인스타그램 45%, 유튜브 30%, 네이버 25%.
+        하반기 예산 증액 건의."
+template_name: "business"
+language: "ko"
+```
+
+**LLM이 구조화한 슬라이드 내용:**
+```json
+[
+  {"slide_id": "cover",      "title": "2026 상반기 마케팅 성과 보고서", "subtitle": "마케팅팀"},
+  {"slide_id": "agenda",     "title": "목차", "bullets": ["1. 성과 요약", "2. 채널별 분석", "3. 예산 현황", "4. 하반기 건의사항"]},
+  {"slide_id": "analysis",   "title": "성과 요약", "body": "광고비 5천만원 집행 / 전환율 3.2% / 매출 기여 2억원"},
+  {"slide_id": "data_chart", "title": "채널별 비중",
+   "chart_data": {"chart_type": "pie", "categories": ["인스타그램", "유튜브", "네이버"],
+                  "series": [{"name": "비중(%)", "values": [45, 30, 25]}]}},
+  {"slide_id": "data_table", "title": "채널별 상세 현황",
+   "table_data": [["채널", "예산(만원)", "전환율", "매출기여(만원)"],
+                  ["인스타그램", "2,250", "4.1%", "9,000"],
+                  ["유튜브",     "1,500", "2.8%", "6,000"],
+                  ["네이버",     "1,250", "2.2%", "5,000"]]},
+  {"slide_id": "closing",    "title": "하반기 예산 증액 건의", "subtitle": "감사합니다"}
+]
+```
+
+**출력 (JSON):**
+```json
+{
+  "file_path": "./output/20260503_141022.pptx",
+  "slide_count": 6,
+  "template": "business",
+  "title": "2026 상반기 마케팅 성과 보고서",
+  "summary": "1. 2026 상반기 마케팅 성과 보고서\n2. 목차\n3. 성과 요약\n4. 채널별 비중\n5. 채널별 상세 현황\n6. 하반기 예산 증액 건의"
+}
+```
+
+**생성된 PPTX 구성:**
+| 슬라이드 | 타입 | 내용 |
+|----------|------|------|
+| 1 | 커버 | 제목 + 부제 (컬러 배경) |
+| 2 | 텍스트 | 목차 (글머리 기호) |
+| 3 | 텍스트 | 성과 요약 |
+| 4 | 파이 차트 | 채널별 비중 |
+| 5 | 표 | 채널별 상세 현황 (헤더 강조) |
+| 6 | 마무리 | 건의사항 + 감사 |
+
+---
+
+### 예시 2 — 스타트업 피치덱 (`pitch` 템플릿)
+
+**입력:**
+```
+Tool: NL2PPT
+query: "AI 기반 재고 최적화 SaaS.
+        문제: 중소 유통업체 재고 손실 연 15%.
+        솔루션: 실시간 수요 예측 ML 모델.
+        시장: 국내 2조원 (TAM), SAM 5천억, SOM 500억.
+        팀: CEO 전커머스 10년, CTO KAIST 박사.
+        내년 MAU 1만, ARR 10억 목표. 시드 5억 투자 요청."
+template_name: "pitch"
+language: "ko"
+```
+
+**출력 (JSON):**
+```json
+{
+  "file_path": "./output/20260503_141523.pptx",
+  "slide_count": 6,
+  "template": "pitch",
+  "title": "AI 재고 최적화 SaaS",
+  "summary": "1. AI 재고 최적화 SaaS\n2. 문제\n3. 솔루션\n4. 시장 규모\n5. 팀 소개\n6. 투자 요청"
+}
+```
+
+**생성된 PPTX 구성:**
+| 슬라이드 | 타입 | 내용 |
+|----------|------|------|
+| 1 | 커버 | 회사명 + 한줄 소개 |
+| 2 | 텍스트 | 문제 (재고 손실 15%, 기존 한계) |
+| 3 | 텍스트 | 솔루션 (ML 모델, 차별점) |
+| 4 | 컬럼 차트 | 시장 규모 (TAM/SAM/SOM) |
+| 5 | 텍스트 | 팀 소개 |
+| 6 | 마무리 | 목표 지표 + 투자 요청 금액 |
+
+---
+
+### 예시 3 — 분석 보고서 (`report` 템플릿)
+
+**입력:**
+```
+Tool: NL2PPT
+query: "국내 SaaS 시장 분석 보고서.
+        2022년 1.2조 → 2023년 1.6조 → 2024년 2.1조 → 2025년 2.8조 성장.
+        성장 동인: 클라우드 전환 가속, 구독 모델 확산, 중소기업 디지털화.
+        리스크: 데이터 보안 규제 강화, 글로벌 빅테크 진입.
+        결론: 2026년 3.5조 전망, HR/ERP/CRM 분야 집중 투자 권고."
+template_name: "report"
+language: "ko"
+```
+
+**출력 (JSON):**
+```json
+{
+  "file_path": "./output/20260503_142200.pptx",
+  "slide_count": 7,
+  "template": "report",
+  "title": "국내 SaaS 시장 분석 보고서",
+  "summary": "1. 국내 SaaS 시장 분석\n2. 핵심 요약\n3. 시장 배경\n4. 연도별 성장 추이\n5. 분야별 현황\n6. 결론 및 시사점\n7. 마무리"
+}
+```
+
+**생성된 PPTX 구성:**
+| 슬라이드 | 타입 | 내용 |
+|----------|------|------|
+| 1 | 커버 | 제목 + 날짜 |
+| 2 | 텍스트 | 핵심 요약 (3줄 요약) |
+| 3 | 텍스트 | 시장 배경 |
+| 4 | 라인 차트 | 연도별 시장 규모 성장 추이 |
+| 5 | 표 | HR/ERP/CRM 분야별 현황 |
+| 6 | 텍스트 | 결론 및 시사점 |
+| 7 | 마무리 | 결론 메시지 |
+
+---
+
+### 예시 4 — 커스텀 템플릿
+
+`./custom_templates/dev_retrospective.yaml` 파일을 직접 만들면 자동으로 탐색됩니다.
+
+```yaml
+# ./custom_templates/dev_retrospective.yaml
+name: dev_retrospective
+description: "개발팀 분기 회고 템플릿"
+slides:
+  - id: cover
+    type: title_slide
+    placeholders: [{name: title}, {name: subtitle}]
+  - id: done
+    type: content_slide
+    placeholders: [{name: title}, {name: bullets, type: list}]
+  - id: issues
+    type: content_slide
+    placeholders: [{name: title}, {name: bullets, type: list}]
+  - id: metrics
+    type: chart_slide
+    chart_type: bar
+    placeholders: [{name: title}, {name: chart_data}]
+  - id: next_quarter
+    type: content_slide
+    placeholders: [{name: title}, {name: bullets, type: list}]
+theme:
+  primary_color: "1A6B3C"
+  font_family: "맑은 고딕"
+```
+
+**입력:**
+```
+Tool: NL2PPT
+query: "분기 개발팀 회고. 완료: 결제 모듈 v2, API 성능 30% 개선.
+        이슈: 테스트 커버리지 부족. 다음 분기: 커버리지 80%, 신규 기능 3건."
+template_name: "dev_retrospective"
+```
+
+**출력:** `./output/20260503_142011.pptx` (5슬라이드, 초록 테마)
+
+---
+
+## 3. 아키텍처 개요
 
 ```
 [MCP Client]
@@ -34,7 +320,7 @@
 [utils/]   ← LLM/DB 연결, 설정 로드, 로깅 — 공통 인프라
 ```
 
-### 전체 흐름 (NL2Mermaid)
+### NL2Mermaid 흐름
 
 ```
 NL2Mermaid tool
@@ -45,15 +331,30 @@ NL2Mermaid tool
         └── Image(data=image_bytes, format="png") 반환
 ```
 
+### NL2PPT 흐름
+
+```
+NL2PPT tool
+  └── ppt_agent(query, template_name, language)
+        ├── ppt_generator_service.get_template()  → TemplateDefinition
+        ├── ppt_content_service.execute()         → PptContent  (LLM 슬라이드 구조화)
+        ├── ppt_generator_service.execute()       → PptResult   (PPTX bytes 생성)
+        │     ├── title_slide   → 컬러 배경 + 제목/부제
+        │     ├── content_slide → 글머리 기호 또는 본문
+        │     ├── table_slide   → python-pptx Table API
+        │     ├── chart_slide   → python-pptx Chart API (bar/column/line/pie)
+        │     └── two_column    → 좌우 2컬럼 레이아웃
+        └── ./output/{timestamp}.pptx 저장 + JSON 반환
+```
+
 ### 레이어 간 의존 방향
 
 ```
 main.py  →  agents  →  modules  →  utils
 ```
 
-- 역방향 의존 금지: `modules`는 `agents`를 모르고, `utils`는 `modules`를 모릅니다.
-- `agents`끼리 서로를 직접 호출하지 않습니다.
-- `modules`끼리 서로를 직접 호출하지 않습니다. 조합은 `agents`에서 수행합니다.
+- 역방향 의존 금지 (`modules`는 `agents`를 모름)
+- `agents`끼리, `modules`끼리 서로 직접 호출 금지. 조합은 `agents`에서만.
 
 ### 프로젝트 구조
 
@@ -61,169 +362,46 @@ main.py  →  agents  →  modules  →  utils
 src/
 ├── agents/
 │   ├── nl2mermaid_agent.py           ← NL2Mermaid Agent (Module 2개 조합 + retry)
+│   ├── ppt_agent.py                  ← NL2PPT Agent (ppt_content + ppt_generator 조합)
 │   └── agent_env/
-│       └── nl2mermaid.env.example    ← Agent별 환경변수 예시
+│       ├── nl2mermaid.env.example
+│       └── ppt.env.example
 ├── modules/
+│   ├── shared/
+│   │   └── types.py                  ← 모듈 간 공유 타입 (ChartData, SlideContent 등)
 │   ├── nl2mermaid/                   ← 자연어 → Mermaid 코드 생성
+│   │   ├── service.py
+│   │   ├── prompts.py
+│   │   └── config/
+│   ├── mermaid_renderer/             ← Mermaid 코드 → PNG 렌더링
+│   │   ├── service.py
+│   │   ├── providers/
+│   │   │   ├── mermaid_ink.py        ← 기본 provider
+│   │   │   └── kroki.py             ← 선택 provider
+│   │   └── config/
+│   ├── ppt_content/                  ← 자연어 → 슬라이드 내용 구조화 (LLM)
 │   │   ├── service.py
 │   │   ├── prompts.py
 │   │   ├── types.py
 │   │   └── config/
-│   └── mermaid_renderer/             ← Mermaid 코드 → PNG 렌더링
+│   └── ppt_generator/               ← 슬라이드 내용 → PPTX 생성 (python-pptx)
 │       ├── service.py
-│       ├── providers/
-│       │   ├── mermaid_ink.py        ← 기본 provider (mermaid.ink)
-│       │   └── kroki.py              ← 선택 provider (Kroki)
+│       ├── types.py
+│       ├── exceptions.py
+│       ├── templates/                ← 내장 YAML 템플릿
+│       │   ├── business.yaml
+│       │   ├── pitch.yaml
+│       │   └── report.yaml
 │       └── config/
 └── utils/
     ├── llm_manager.py
-    ├── db_manager.py
     ├── config_loader.py
     └── logger.py
 ```
 
 ---
 
-## 2. 레이어별 역할과 규칙
-
-### 2-1. `main.py` — MCP Tool 등록
-
-**역할:** MCP 서버를 생성하고 Agent를 Tool로 등록합니다.
-
-```python
-from fastmcp import FastMCP
-from fastmcp.utilities.types import Image
-from src.agents.nl2mermaid_agent import nl2mermaid_agent
-
-mcp = FastMCP("NL2Mermaid MCP Server")
-
-@mcp.tool(name="NL2Mermaid", description="...")
-async def nl2mermaid_tool(query: str, diagram_type: str = "auto", theme: str = "default") -> Image:
-    return await nl2mermaid_agent(query=query, diagram_type=diagram_type, theme=theme)
-
-app = mcp.http_app
-```
-
-**규칙:**
-- MCP Tool로 등록하는 대상은 **Agent**입니다. Module을 직접 등록하지 않습니다.
-- Tool 함수 본체는 **Agent 호출 1줄**만 작성합니다. 비즈니스 로직을 두지 않습니다.
-- `app = mcp.http_app`은 항상 파일 하단에 유지합니다.
-
----
-
-### 2-2. `agents/` — MCP 등록 단위 + Module 조합
-
-**역할:** 하나 이상의 Module을 조합하고, MCP의 Input/Output 형식에 맞게 변환합니다.
-
-**파일 위치:** `src/agents/{이름}_agent.py`
-
-```python
-# src/agents/nl2mermaid_agent.py
-async def nl2mermaid_agent(query: str, diagram_type: str = "auto", theme: str = "default") -> Image:
-    # nl2mermaid + mermaid_renderer 두 모듈 조합
-    # 렌더링 실패 시 에러 피드백 → LLM 재시도 (최대 2회 self-correction)
-    ...
-```
-
-**Agent가 해야 할 일:**
-
-| 단계 | 내용 |
-|------|------|
-| 1. 로깅 | `[REQUEST]` 로그 — 입력값 기록 |
-| 2. Input 변환 | MCP 입력 → 각 Module의 `execute()`가 받는 형태로 변환 |
-| 3. Module 조합 호출 | `module_a_service.execute(...)`, `module_b_service.execute(...)` 순서대로 호출 |
-| 4. Output 변환 | Module 결과 → MCP Tool 반환 형태로 변환 |
-| 5. 에러 처리 | 예외 catch → 사용자 친화적 메시지 반환 |
-| 6. 로깅 | `[RESPONSE]` 로그 — elapsed_time_ms 기록 |
-
-**규칙:**
-- Agent는 **MCP에 등록되는 유일한 단위**입니다. Module은 MCP에 직접 노출하지 않습니다.
-- Module 간 직접 호출은 금지입니다. 조합은 Agent에서 수행합니다.
-
----
-
-### 2-3. `modules/` — 기능의 모든 비즈니스 로직
-
-**역할:** 하나의 기능에 필요한 모든 로직을 담는 독립 단위입니다.
-
-**디렉토리 구조:**
-```
-src/modules/{모듈명}/
-├── __init__.py          # service 싱글톤 인스턴스를 외부에 export
-├── service.py           # 핵심 로직 + 외부 진입점: execute()
-├── types.py             # Pydantic 모델, 타입 정의
-├── constants.py         # 상수
-├── prompts.py           # LLM 프롬프트 (있을 경우)
-├── config/
-│   ├── __init__.py
-│   ├── config.py        # 환경변수 로드 + 설정값 관리
-│   └── *.yaml           # 서비스별 설정 파일 (있을 경우)
-└── providers/           # 외부 서비스 구현체 (있을 경우)
-    ├── __init__.py
-    ├── base.py
-    └── {provider}.py
-```
-
-**`service.py`의 핵심 패턴 — `execute()`가 유일한 진입점:**
-
-```python
-class MyModuleService:
-    async def execute(self, query: str) -> str:
-        """Agent에서 호출하는 유일한 진입점."""
-        ...
-
-my_module_service = MyModuleService()
-```
-
-**`__init__.py` — 외부에 service 인스턴스만 노출:**
-
-```python
-from .service import my_module_service
-
-__all__ = ["my_module_service"]
-```
-
-**규칙:**
-- 해당 기능의 로직은 **Module 디렉토리 안에 전부** 있어야 합니다.
-- Agent에서는 `execute()` 하나만 호출합니다. 내부 메서드를 직접 호출하지 않습니다.
-- Module은 `agents/`, `main.py`를 import하지 않습니다.
-- LLM 호출은 `utils/llm_manager`를, DB 접속은 `utils/db_manager`를 사용합니다.
-
-**Provider 패턴 — 외부 API 구현체가 여럿일 때:**
-
-```python
-# providers/base.py
-class BaseRendererProvider(ABC):
-    @abstractmethod
-    async def render(self, code: str, **kwargs) -> bytes: ...
-```
-
-새 Provider 추가 시 `service.py`의 레지스트리에 1줄만 추가합니다.
-
----
-
-### 2-4. `utils/` — 공통 인프라
-
-| 파일 | 역할 |
-|------|------|
-| `llm_manager.py` | **LLM 연결** — Cohere / OpenAI 라우팅 클라이언트 |
-| `db_manager.py` | **DB 연결** — PostgreSQL / MariaDB 연결 관리 |
-| `config_loader.py` | `.env` 파일 로드 + 환경변수 조회 헬퍼 |
-| `logger.py` | JSON 형식 stdout 로거 |
-
-**규칙:**
-- LLM 호출은 반드시 `utils/llm_manager`를 사용합니다. 직접 LLM SDK를 import하지 않습니다.
-- DB 접속은 반드시 `utils/db_manager`를 사용합니다.
-- `utils`에는 특정 Module에 종속된 로직을 두지 않습니다.
-
----
-
-## 3. 환경변수 설정 구조
-
-```
-[루트 .env]                              ← 서버 전체 공통 (LLM API 키, APP_ENV 등)
-[src/agents/agent_env/{이름}.env]        ← Agent별 독립 설정
-```
+## 4. 환경변수 설정
 
 ### 루트 `.env`
 
@@ -241,17 +419,14 @@ CLIENT_NAME=prebuilt-mcp
 API_KEY=your-cohere-api-key
 BASE_URL=http://your-cohere-endpoint
 MODEL=command
-TEMPERATURE=0.0
-TIMEOUT=120
-MAX_TOKENS=2048
 
-# OpenAI (nl2mermaid 기본 모델에 사용)
+# OpenAI
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-### Agent별 `.env` (`nl2mermaid.env`)
+### NL2Mermaid `.env`
 
 ```bash
 cp src/agents/agent_env/nl2mermaid.env.example src/agents/agent_env/nl2mermaid.env
@@ -259,88 +434,152 @@ cp src/agents/agent_env/nl2mermaid.env.example src/agents/agent_env/nl2mermaid.e
 
 ```ini
 NL2MERMAID_MODEL_ID=openai:gpt-4o-mini
-RENDERER_PROVIDER=mermaid_ink        # mermaid_ink | kroki
+RENDERER_PROVIDER=mermaid_ink   # mermaid_ink | kroki
 RENDERER_OUTPUT_DIR=./output
+```
+
+### NL2PPT `.env`
+
+```bash
+cp src/agents/agent_env/ppt.env.example src/agents/agent_env/ppt.env
+```
+
+```ini
+PPT_CONTENT_MODEL_ID=openai:gpt-4o-mini
+PPT_OUTPUT_DIR=./output
+PPT_DEFAULT_TEMPLATE=business
+PPT_CUSTOM_TEMPLATES_DIR=./custom_templates
 ```
 
 > `.env.example` 파일은 Git에 포함, 실제 `.env` 파일은 `.gitignore`에 의해 제외됩니다.
 
 ---
 
-## 4. 공통 유틸리티
+## 5. NL2PPT 템플릿
 
-### 4-1. `llm_manager` — LLM 연결 (Cohere / OpenAI)
+### 내장 템플릿 3종
+
+| 이름 | 설명 | 슬라이드 구성 |
+|------|------|---------------|
+| `business` | 비즈니스 보고 | 커버 / 목차 / 내용×2 / 차트 / 표 / 마무리 |
+| `pitch` | 스타트업 피치덱 | 커버 / 문제 / 솔루션 / 시장(차트) / 팀 / 요청 |
+| `report` | 분석 보고서 | 커버 / 요약 / 배경 / 추이(차트) / 표 / 결론 / 마무리 |
+
+### 지원 슬라이드 타입
+
+| type | 내용 |
+|------|------|
+| `title_slide` | 커버·마무리 — 컬러 배경 + 제목 + 부제 |
+| `content_slide` | 제목 + 글머리 기호 또는 본문 텍스트 |
+| `table_slide` | 제목 + 표 (헤더 자동 강조) |
+| `chart_slide` | 제목 + 차트 (bar / column / line / pie) |
+| `two_column` | 제목 + 좌우 2컬럼 레이아웃 |
+
+### 커스텀 템플릿 YAML 구조
+
+```yaml
+name: my_template
+description: "커스텀 템플릿 설명"
+slides:
+  - id: cover
+    type: title_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: subtitle}
+  - id: main
+    type: content_slide
+    placeholders:
+      - {name: title}
+      - {name: bullets, type: list}
+  - id: chart
+    type: chart_slide
+    chart_type: bar          # bar | column | line | pie
+    placeholders:
+      - {name: title}
+      - {name: chart_data}
+  - id: summary
+    type: table_slide
+    placeholders:
+      - {name: title}
+      - {name: table_data}
+theme:
+  primary_color: "2B4E9E"   # 헥스 코드
+  secondary_color: "E8EEF8"
+  font_family: "맑은 고딕"
+  font_size_title: 36
+  font_size_body: 18
+```
+
+커스텀 YAML을 `./custom_templates/` 디렉터리에 저장하면 `template_name`으로 자동 탐색됩니다.
+
+---
+
+## 6. 공통 유틸리티
+
+### `llm_manager` — LLM 연결
 
 ```python
 from src.utils.llm_manager import LLMManager
 
 llm = LLMManager()
-result = await llm.ainvoke(prompt, model_name="openai:gpt-4o-mini")  # → OpenAI
-result = await llm.ainvoke(prompt, model_name="command-r-plus")      # → Cohere
-
+result = await llm.ainvoke(prompt, model_name="openai:gpt-4o-mini")
 content = result["content"]
-usage   = result["usage"]  # {"input_tokens": ..., "output_tokens": ..., "elapsed_time": ...}
+usage   = result["usage"]  # {input_tokens, output_tokens, elapsed_time}
 ```
 
-**모델명 라우팅 규칙:**
+**모델명 라우팅:**
 
-| 입력 | Provider | 사용 모델 |
-|------|----------|-----------|
-| `"command-r-plus"` | Cohere | 입력값 그대로 |
-| `"gpt-4o-mini"` | OpenAI | 입력값 그대로 |
-| `"openai"` | OpenAI | `OPENAI_MODEL` env 값 |
-| `"openai:gpt-4o"` | OpenAI | `gpt-4o` |
-| `"cohere:command-r"` | Cohere | `command-r` |
+| 입력 | Provider |
+|------|----------|
+| `"gpt-4o-mini"` | OpenAI |
+| `"openai:gpt-4o"` | OpenAI (`gpt-4o`) |
+| `"command-r-plus"` | Cohere |
+| `"cohere:command-r"` | Cohere (`command-r`) |
 
-### 4-2. `config_loader` — 환경변수 로드 & 조회
+### `config_loader` — 환경변수 로드
 
 ```python
-from src.utils.config_loader import load_root_env, load_agent_env, get_env, get_env_int
+from src.utils.config_loader import load_root_env, load_agent_env, get_env
 
 load_root_env()
-load_agent_env("nl2mermaid")  # src/agents/agent_env/nl2mermaid.env 로드
+load_agent_env("ppt")  # src/agents/agent_env/ppt.env 로드
 
 api_key = get_env("OPENAI_API_KEY", default="")
-timeout  = get_env_int("TIMEOUT", default=30)
 ```
 
-### 4-3. `get_logger` — JSON 구조화 로그
+### `get_logger` — JSON 구조화 로그
 
 ```python
 from src.utils.logger import get_logger
 
-logger = get_logger("nl2mermaid_agent")
-logger.info("[REQUEST] nl2mermaid, query=%s", query)
+logger = get_logger("ppt_agent")
+logger.info("[REQUEST] ppt_agent, template=%s, query=%s", template, query)
 logger.info("[RESPONSE] status=success, elapsed_time_ms=%s", elapsed_ms)
-logger.error("[RESPONSE] status=error, elapsed_time_ms=%s, error=%s", elapsed_ms, str(e))
 ```
 
 출력 형식 (JSON, stdout):
 ```json
 {
-  "timestamp": "2026-03-25T10:00:00.000000",
+  "timestamp": "2026-05-03T14:10:22.000000",
   "level": "INFO",
-  "name": "nl2mermaid_agent",
-  "message": "[REQUEST] nl2mermaid, query=...",
-  "source": { "function": "nl2mermaid_agent", "line": 42 }
+  "name": "ppt_agent",
+  "message": "[REQUEST] ppt_agent, template=business, query=..."
 }
 ```
 
 ---
 
-## 5. 새 Agent / Module 추가하기
+## 7. 새 Agent / Module 추가하기
 
 ### Step 1. Module 디렉토리 생성
 
 ```bash
 mkdir -p src/modules/my_module/config
-touch src/modules/my_module/__init__.py
-touch src/modules/my_module/service.py
-touch src/modules/my_module/config/__init__.py
-touch src/modules/my_module/config/config.py
+touch src/modules/my_module/{__init__,service,types,constants}.py
+touch src/modules/my_module/config/{__init__,config}.py
 ```
 
-### Step 2. `config/config.py` 작성
+### Step 2. `config/config.py`
 
 ```python
 from src.utils.config_loader import load_root_env, load_agent_env, get_env
@@ -348,27 +587,27 @@ from src.utils.config_loader import load_root_env, load_agent_env, get_env
 load_root_env()
 load_agent_env("my_module")
 
-MY_API_KEY = get_env("MY_API_KEY", "")
+MY_MODEL_ID = get_env("MY_MODEL_ID", "openai:gpt-4o-mini")
 ```
 
-### Step 3. `service.py` 작성
+### Step 3. `service.py`
 
 ```python
 from src.utils.llm_manager import LLMManager
-from .config.config import MY_API_KEY
+from .config.config import MY_MODEL_ID
 
 class MyModuleService:
     def __init__(self):
         self.llm = LLMManager()
 
     async def execute(self, query: str) -> str:
-        result = await self.llm.ainvoke(query)
+        result = await self.llm.ainvoke(query, model_name=MY_MODEL_ID)
         return result["content"]
 
 my_module_service = MyModuleService()
 ```
 
-### Step 4. `__init__.py` 작성
+### Step 4. `__init__.py`
 
 ```python
 from .service import my_module_service
@@ -376,7 +615,7 @@ from .service import my_module_service
 __all__ = ["my_module_service"]
 ```
 
-### Step 5. Agent 파일 생성
+### Step 5. Agent 파일
 
 ```python
 # src/agents/my_module_agent.py
@@ -386,35 +625,28 @@ from src.utils.logger import get_logger
 
 logger = get_logger("my_module_agent")
 
-async def my_module_agent(input: str) -> str:
-    start_time = time.time()
-    logger.info("[REQUEST] my_module, input=%s", input)
+async def my_module_agent(query: str) -> str:
+    start = time.time()
+    logger.info("[REQUEST] my_module, query=%s", query)
     try:
-        result = await my_module_service.execute(query=input)
-        elapsed = round((time.time() - start_time) * 1000, 2)
+        result = await my_module_service.execute(query=query)
+        elapsed = round((time.time() - start) * 1000, 2)
         logger.info("[RESPONSE] status=success, elapsed_time_ms=%s", elapsed)
         return result
     except Exception as e:
-        elapsed = round((time.time() - start_time) * 1000, 2)
+        elapsed = round((time.time() - start) * 1000, 2)
         logger.error("[RESPONSE] status=error, elapsed_time_ms=%s, error=%s", elapsed, str(e))
-        return f"죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: {e}"
+        return f"오류가 발생했습니다: {e}"
 ```
 
-### Step 6. `main.py`에 등록
+### Step 6. `main.py` 등록
 
 ```python
 from src.agents.my_module_agent import my_module_agent
 
-@mcp.tool(name="My_Module", description="...")
-async def my_module_tool(input: str) -> str:
-    return await my_module_agent(input=input)
-```
-
-### Step 7. `.env.example` 작성
-
-```ini
-# src/agents/agent_env/my_module.env.example
-MY_API_KEY=your-api-key-here
+@mcp.tool(name="MyTool", description="...")
+async def my_tool(query: str) -> str:
+    return await my_module_agent(query=query)
 ```
 
 ### 체크리스트
@@ -430,7 +662,7 @@ MY_API_KEY=your-api-key-here
 
 ---
 
-## 6. 서버 실행
+## 8. 서버 실행
 
 ### 의존성 설치
 
@@ -442,10 +674,10 @@ uv sync
 
 ```bash
 cp .env.example .env
-# .env 편집 후 LLM API 키, endpoint 입력
+# LLM API 키 및 endpoint 입력
 
 cp src/agents/agent_env/nl2mermaid.env.example src/agents/agent_env/nl2mermaid.env
-# NL2MERMAID_MODEL_ID, RENDERER_PROVIDER 설정
+cp src/agents/agent_env/ppt.env.example        src/agents/agent_env/ppt.env
 ```
 
 ### 개발 모드 (Hot Reload)
@@ -454,7 +686,7 @@ cp src/agents/agent_env/nl2mermaid.env.example src/agents/agent_env/nl2mermaid.e
 uv run uvicorn main:app --host 0.0.0.0 --port 9101 --reload
 ```
 
-### 운영 모드 (Gunicorn)
+### 운영 모드
 
 ```bash
 uv run gunicorn -b 0.0.0.0:9101 -k uvicorn.workers.UvicornWorker main:app
@@ -466,22 +698,9 @@ uv run gunicorn -b 0.0.0.0:9101 -k uvicorn.workers.UvicornWorker main:app
 http://0.0.0.0:9101/mcp
 ```
 
----
-
-## 지원 다이어그램 타입
-
-| 타입 | Mermaid 문법 | 용도 |
-|------|-------------|------|
-| auto | LLM 자동 결정 | - |
-| flowchart | `flowchart TD/LR` | 프로세스 흐름도 |
-| sequence | `sequenceDiagram` | 시스템·팀 간 상호작용 |
-| gantt | `gantt` | 프로젝트 일정 |
-| timeline | `timeline` | 시계열 이벤트 |
-| mindmap | `mindmap` | 개념 구조도 |
-
-## 렌더링 Provider
+### 렌더링 Provider (NL2Mermaid)
 
 | Provider | 방식 | 특징 |
 |----------|------|------|
-| mermaid_ink (기본) | GET + pako 인코딩 | 설치 불필요, 한글 지원 |
-| kroki (선택) | POST | 자체 호스팅 시 사용 |
+| `mermaid_ink` (기본) | GET + pako 인코딩 | 설치 불필요, 한글 지원 |
+| `kroki` (선택) | POST | 자체 호스팅 시 사용 |
