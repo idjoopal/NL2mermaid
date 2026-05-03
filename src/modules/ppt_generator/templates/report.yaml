@@ -1,0 +1,48 @@
+name: report
+description: "분석 보고서"
+slides:
+  - id: cover
+    type: title_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: subtitle}
+  - id: summary
+    type: content_slide
+    placeholders:
+      - {name: title}
+      - {name: bullets, type: list}
+  - id: background
+    type: content_slide
+    placeholders:
+      - {name: title}
+      - {name: body}
+  - id: analysis_chart
+    type: chart_slide
+    chart_type: line
+    placeholders:
+      - {name: title}
+      - {name: chart_data}
+  - id: detail_table
+    type: table_slide
+    placeholders:
+      - {name: title}
+      - {name: table_data}
+  - id: conclusion
+    type: content_slide
+    placeholders:
+      - {name: title}
+      - {name: bullets, type: list}
+  - id: closing
+    type: title_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: subtitle}
+theme:
+  primary_color: "2E4057"
+  secondary_color: "EBF0F5"
+  accent_color: "48A999"
+  font_family: "맑은 고딕"
+  font_size_title: 36
+  font_size_subtitle: 22
+  font_size_heading: 24
+  font_size_body: 18

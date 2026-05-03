@@ -1,0 +1,43 @@
+name: business
+description: "비즈니스 보고용 프레젠테이션"
+slides:
+  - id: cover
+    type: title_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: subtitle}
+  - id: agenda
+    type: content_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: bullets, type: list, required: true}
+  - id: analysis
+    type: content_slide
+    placeholders:
+      - {name: title}
+      - {name: body}
+  - id: data_chart
+    type: chart_slide
+    chart_type: bar
+    placeholders:
+      - {name: title}
+      - {name: chart_data}
+  - id: data_table
+    type: table_slide
+    placeholders:
+      - {name: title}
+      - {name: table_data}
+  - id: closing
+    type: title_slide
+    placeholders:
+      - {name: title, required: true}
+      - {name: subtitle}
+theme:
+  primary_color: "2B4E9E"
+  secondary_color: "E8EEF8"
+  accent_color: "F0A500"
+  font_family: "맑은 고딕"
+  font_size_title: 36
+  font_size_subtitle: 24
+  font_size_heading: 24
+  font_size_body: 18

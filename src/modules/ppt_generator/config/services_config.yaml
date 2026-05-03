@@ -1,0 +1,4 @@
+default_template: business
+output_dir: ./output
+custom_templates_dir: ./custom_templates
+font_fallback: "맑은 고딕"
