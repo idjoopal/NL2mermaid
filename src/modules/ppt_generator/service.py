@@ -10,10 +10,11 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE
+from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
-from src.modules.ppt_content.types import ChartData, PptContent, SlideContent
+from src.modules.shared.types import ChartData, PptContent, SlideContent
 from src.utils.logger import get_logger
 
 from .config.config import ppt_generator_config
@@ -71,7 +72,15 @@ class PptGeneratorService:
         prs = self._create_presentation()
         slide_def_map = {s.id: s for s in template.slides}
 
-        for slide_content in content.slides:
+        # Reorder content slides to match template definition order
+        content_map = {sc.slide_id: sc for sc in content.slides}
+        ordered_slides = [
+            content_map[sid]
+            for sid in (s.id for s in template.slides)
+            if sid in content_map
+        ]
+
+        for slide_content in ordered_slides:
             slide_def = slide_def_map.get(slide_content.slide_id)
             if not slide_def:
                 logger.warning("슬라이드 정의 없음: %s", slide_content.slide_id)
@@ -141,7 +150,7 @@ class PptGeneratorService:
         w, h = self.SLIDE_WIDTH, self.SLIDE_HEIGHT
 
         # Colored upper block (65% height)
-        rect = slide.shapes.add_shape(1, 0, 0, w, int(h * 0.65))
+        rect = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, w, int(h * 0.65))
         rect.fill.solid()
         rect.fill.fore_color.rgb = primary
         rect.line.fill.background()
@@ -215,14 +224,10 @@ class PptGeneratorService:
             for c_i in range(cols):
                 cell_val = row[c_i] if c_i < len(row) else ""
                 cell = tbl.cell(r_i, c_i)
-                cell.text = str(cell_val)
 
                 tf = cell.text_frame
                 para = tf.paragraphs[0]
-                if not para.runs:
-                    run = para.add_run()
-                else:
-                    run = para.runs[0]
+                run = para.runs[0] if para.runs else para.add_run()
 
                 run.text = str(cell_val)
                 run.font.size = Pt(theme.font_size_body - 2)
@@ -256,7 +261,10 @@ class PptGeneratorService:
 
         chart_data = CategoryChartData()
         chart_data.categories = cd.categories
-        for series in cd.series:
+
+        # Pie charts only support a single series
+        series_list = cd.series[:1] if chart_type_key == "pie" else cd.series
+        for series in series_list:
             chart_data.add_series(
                 series.get("name", ""),
                 tuple(float(v) for v in series.get("values", [])),
@@ -298,7 +306,7 @@ class PptGeneratorService:
     def _add_title_bar(self, slide, title: str, theme: ThemeDefinition):
         primary = self._rgb(theme.primary_color)
         w = self.SLIDE_WIDTH
-        rect = slide.shapes.add_shape(1, 0, 0, w, self.TITLE_HEIGHT)
+        rect = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, w, self.TITLE_HEIGHT)
         rect.fill.solid()
         rect.fill.fore_color.rgb = primary
         rect.line.fill.background()
@@ -354,6 +362,9 @@ class PptGeneratorService:
             tpl = self._parse_yaml(f)
             if tpl:
                 self._templates[tpl.name] = tpl
+                # Also register by filename stem if internal name differs
+                if tpl.name != name:
+                    self._templates[name] = tpl
 
     def _parse_yaml(self, path: Path) -> Optional[TemplateDefinition]:
         try:
@@ -365,7 +376,7 @@ class PptGeneratorService:
                 primary_color=td.get("primary_color", "2B4E9E"),
                 secondary_color=td.get("secondary_color", "E8EEF8"),
                 accent_color=td.get("accent_color", "F0A500"),
-                font_family=td.get("font_family", "맑은 고딕"),
+                font_family=td.get("font_family", ppt_generator_config.font_fallback),
                 font_size_title=td.get("font_size_title", 36),
                 font_size_subtitle=td.get("font_size_subtitle", 24),
                 font_size_heading=td.get("font_size_heading", 24),

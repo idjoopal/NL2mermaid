@@ -4,7 +4,7 @@ SYSTEM_PROMPT = """\
 
 규칙:
 1. 응답은 반드시 유효한 JSON 배열만 반환합니다. 다른 텍스트 없이 JSON만 출력하세요.
-2. 슬라이드 타입에 맞는 필드를 저우세요:
+2. 슬라이드 타입에 맞는 필드를 채우세요:
    - title_slide: title, subtitle (선택)
    - content_slide: title, bullets (list[str]) 또는 body (str)
    - table_slide: title, table_data ([[header_row], [row1], [row2], ...])
@@ -23,7 +23,7 @@ USER_PROMPT = """\
 [슬라이드 구조]
 {slide_specs}
 
-위 슬라이드 구조에 맞게 내용을 잘 젠우어 JSON 배열로 반환하세요.
+위 슬라이드 구조에 맞게 내용을 잘 채워 JSON 배열로 반환하세요.
 
 예시:
 [
