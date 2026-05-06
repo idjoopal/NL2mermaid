@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 
 from src.agents.nl2mermaid_agent import nl2mermaid_agent
+from src.agents.ppt_agent import ppt_agent
 
 
 # =============================================================================
@@ -61,6 +62,49 @@ async def nl2mermaid_tool(
         PNG 이미지
     """
     return await nl2mermaid_agent(query=query, diagram_type=diagram_type, theme=theme)
+
+
+# =============================================================================
+# NL2PPT Tool
+# =============================================================================
+_NL2PPT_DESCRIPTION = """\
+자연어 설명을 PPTX 프레젠테이션 파일로 자동 생성합니다.
+
+LLM이 입력 내용을 슬라이드별로 구조화하고 선택한 템플릿에 맞게 PPTX 파일을 생성합니다.
+
+▸ 입력: query (자연어 내용), template_name (템플릿), language (언어)
+▸ 출력: JSON (파일 경로, 슬라이드 수, 요약)
+
+내장 템플릿:
+- business : 비즈니스 보고 (커버/목차/내용/차트/표/마무리)
+- pitch    : 스타트업 피치덱 (문제/솔루션/시장/팀/요청)
+- report   : 분석 보고서 (커버/요약/배경/분석/결론)
+커스텀: ./custom_templates/*.yaml 자동 탐색
+
+슬라이드 타입: 제목, 텍스트, 표, 차트(bar/line/pie), 2컨럼
+"""
+
+@mcp.tool(
+    name="NL2PPT",
+    description=_NL2PPT_DESCRIPTION,
+)
+async def nl2ppt_tool(
+    query: str,
+    template_name: str = "business",
+    language: str = "ko",
+) -> str:
+    """
+    자연어를 PPTX 프레젠테이션 파일로 변환합니다.
+
+    Args:
+        query: PPT에 담을 자연어 내용
+        template_name: 템플릿 이름 (business | pitch | report | 커스텀명)
+        language: 언어 코드 (ko | en)
+
+    Returns:
+        JSON 문자열 {file_path, slide_count, template, title, summary}
+    """
+    return await ppt_agent(query=query, template_name=template_name, language=language)
 
 
 # =============================================================================
